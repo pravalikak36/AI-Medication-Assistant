@@ -1,17 +1,21 @@
-from dotenv import load_dotenv
-from openai import OpenAI
 import os
 import json
 
+from dotenv import load_dotenv
+from openai import OpenAI
+from supabase import create_client
 
-# Load environment variables
 load_dotenv()
 
-# Gemini client through OpenAI SDK
 client = OpenAI(
     api_key=os.getenv("GEMINI_API_KEY"),
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
 )
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 # Temporary medication data
