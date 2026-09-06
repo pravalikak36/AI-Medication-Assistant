@@ -1,54 +1,142 @@
 import os
 import json
+from datetime import datetime
 
 from dotenv import load_dotenv
 from openai import OpenAI
 from supabase import create_client
+from prompts.system_prompt import system_prompt
 
 load_dotenv()
 
+# Gemini client
 client = OpenAI(
     api_key=os.getenv("GEMINI_API_KEY"),
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
 )
 
+# Supabase client
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-# Temporary medication data
-medications = [
-    {
-        "name": "Paracetamol",
-        "dosage": "500 mg",
-        "time": "8:00 AM",
-        "instructions": "Take after breakfast"
-    },
-    {
-        "name": "Metformin",
-        "dosage": "500 mg",
-        "time": "8:00 PM",
-        "instructions": "Take after dinner"
-    }
-]
-
-
 # Tools
+
 def get_medicines():
-    return medications
+    result = (
+        supabase
+        .table("medications")
+        .select("id, name, dosage, instructions, start_date, end_date")
+        .execute()
+    )
+    return result.data
 
 
 def get_medicine_by_name(name):
-    for medicine in medications:
-        if medicine["name"].lower() == name.lower():
-            return medicine
+    result = (
+        supabase
+        .table("medications")
+        .select(
+            "id, name, dosage, instructions, start_date, end_date, "
+            "medication_schedules(scheduled_time, frequency)"
+        )
+        .ilike("name", name)
+        .execute()
+    )
 
-    return {"error": "Medicine not found"}
+    if not result.data:
+        return {"error": "Medicine not found"}
+
+    medicine = result.data[0]
+    schedule = medicine.pop("medication_schedules", [])
+
+    if schedule:
+        medicine["scheduled_time"] = schedule[0]["scheduled_time"]
+        medicine["frequency"] = schedule[0]["frequency"]
+
+    return medicine
+
+
+def get_current_time():
+    return datetime.now().strftime("%H:%M")
+
+
+def get_due_medicines():
+    current_time = datetime.now().strftime("%H:00:00")
+    current_date = datetime.now().date().isoformat()
+
+    result = (
+        supabase
+        .table("medication_schedules")
+        .select(
+            "scheduled_time, frequency, medications(id, name, dosage, instructions, start_date, end_date)"
+        )
+        .eq("scheduled_time", current_time)
+        .execute()
+    )
+
+    due_medicines = []
+
+    for item in result.data:
+        medicine = item["medications"]
+
+        if (
+            medicine["start_date"] <= current_date
+            and (
+                medicine["end_date"] is None
+                or current_date <= medicine["end_date"]
+            )
+        ):
+            due_medicines.append(item)
+
+    return due_medicines
+
+
+# Testing helper
+def get_due_medicines_at(time):
+    result = (
+        supabase
+        .table("medication_schedules")
+        .select(
+            "scheduled_time, frequency, medications(id, name, dosage, instructions, start_date, end_date)"
+        )
+        .eq("scheduled_time", time)
+        .execute()
+    )
+    return result.data
+
+
+def get_medication_information(name):
+
+    result = (
+        supabase
+        .table("medications")
+        .select(
+            "name, dosage, purpose, prescribed_for, instructions, start_date, end_date, "
+            "medication_schedules(scheduled_time, frequency)"
+        )
+        .ilike("name", name)
+        .execute()
+    )
+
+    if not result.data:
+        return {"error": "Medicine not found"}
+
+    medicine = result.data[0]
+
+    schedule = medicine.pop("medication_schedules", [])
+
+    if schedule:
+        medicine["scheduled_time"] = schedule[0]["scheduled_time"]
+        medicine["frequency"] = schedule[0]["frequency"]
+
+    return medicine
 
 
 # Tool schemas
+
 get_medicines_tool = {
     "type": "function",
     "function": {
@@ -82,41 +170,73 @@ get_medicine_by_name_tool = {
 }
 
 
+get_due_medicines_tool = {
+    "type": "function",
+    "function": {
+        "name": "get_due_medicines",
+        "description": "Get the medicines scheduled for the current time.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    }
+}
+
+
+get_medication_information_tool = {
+    "type": "function",
+    "function": {
+        "name": "get_medication_information",
+        "description": "Get detailed information about a specific medicine, including its purpose and what it was prescribed for.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "The name of the medicine."
+                }
+            },
+            "required": ["name"]
+        }
+    }
+}
+
+
 tools = [
     get_medicines_tool,
-    get_medicine_by_name_tool
+    get_medicine_by_name_tool,
+    get_due_medicines_tool,
+    get_medication_information_tool
 ]
 
 
 # Map tool names to Python functions
 available_tools = {
     "get_medicines": get_medicines,
-    "get_medicine_by_name": get_medicine_by_name
+    "get_medicine_by_name": get_medicine_by_name,
+    "get_due_medicines": get_due_medicines,
+    "get_medication_information": get_medication_information
 }
 
 
 # Conversation
+
 messages = [
     {
         "role": "system",
-        "content": """
-        You are an AI Medication Assistant.
-
-        Use the available tools whenever medication information is required.
-        Only use information returned by the tools.
-        Never invent medication information or change prescribed dosages.
-        """
+        "content": system_prompt
     },
     {
         "role": "user",
-        "content": "Give me the details of both Paracetamol and Metformin."
+        "content": "What are the medicines i shld take in a day"
     }
 ]
 
 
 # Tool-calling loop
-while True:
 
+while True:
     response = client.chat.completions.create(
         model="gemini-3.1-flash-lite",
         messages=messages,
@@ -132,7 +252,6 @@ while True:
     messages.append(message)
 
     for tool_call in message.tool_calls:
-
         function_name = tool_call.function.name
         arguments = json.loads(tool_call.function.arguments)
 
