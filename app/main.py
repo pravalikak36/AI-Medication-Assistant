@@ -6,7 +6,11 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from supabase import create_client
 
-from prompts.system_prompt import system_prompt
+from app.prompts.system_prompt import system_prompt
+
+# Voice+TTs
+from app.utils.voice import get_voice_input
+from app.utils.tts import generate_speech
 
 
 load_dotenv()
@@ -116,11 +120,17 @@ def get_medicine_by_name(name):
     )
 
     if not result.data:
-        return {"error": "Medicine not found"}
+
+        return {
+            "error": "Medicine not found"
+        }
 
     medicine = result.data[0]
 
-    schedules = medicine.pop("medication_schedules", [])
+    schedules = medicine.pop(
+        "medication_schedules",
+        []
+    )
 
     medicine["schedules"] = schedules
 
@@ -178,6 +188,7 @@ def get_medicines_by_day(day):
             continue
 
         if item["day_of_week"]:
+
             if item["day_of_week"].lower() != day.lower():
                 continue
 
@@ -185,33 +196,57 @@ def get_medicines_by_day(day):
             item["frequency_type"] == "times_per"
             and item["frequency_unit"] == "week"
         ):
+
             continue
 
         medicine = item["medications"]
 
         medicines.append({
+
             "medicine_id": medicine["id"],
+
             "name": medicine["name"],
+
             "dosage": medicine["dosage"],
+
             "purpose": medicine["purpose"],
+
             "prescribed_for": medicine["prescribed_for"],
+
             "instructions": medicine["instructions"],
+
             "schedule": {
+
                 "schedule_id": item["id"],
+
                 "dose_quantity": item["dose_quantity"],
+
                 "dose_unit": item["dose_unit"],
+
                 "scheduled_time": item["scheduled_time"],
+
                 "frequency_type": item["frequency_type"],
+
                 "frequency_count": item["frequency_count"],
+
                 "frequency_unit": item["frequency_unit"],
+
                 "duration_value": item["duration_value"],
+
                 "duration_unit": item["duration_unit"],
+
                 "day_of_week": item["day_of_week"],
+
                 "meal_relation": item["meal_relation"],
+
                 "meal_offset_minutes": item["meal_offset_minutes"],
+
                 "start_date": item["start_date"],
+
                 "end_date": item["end_date"]
+
             }
+
         })
 
     return medicines
@@ -220,6 +255,7 @@ def get_medicines_by_day(day):
 def get_medicines_by_time(time):
 
     current_date = datetime.now().date().isoformat()
+
     current_day = datetime.now().strftime("%A")
 
     result = (
@@ -278,33 +314,57 @@ def get_medicines_by_time(time):
             item["frequency_type"] == "times_per"
             and item["frequency_unit"] == "week"
         ):
+
             continue
 
         medicine = item["medications"]
 
         medicines.append({
+
             "medicine_id": medicine["id"],
+
             "name": medicine["name"],
+
             "dosage": medicine["dosage"],
+
             "purpose": medicine["purpose"],
+
             "prescribed_for": medicine["prescribed_for"],
+
             "instructions": medicine["instructions"],
+
             "schedule": {
+
                 "schedule_id": item["id"],
+
                 "dose_quantity": item["dose_quantity"],
+
                 "dose_unit": item["dose_unit"],
+
                 "scheduled_time": item["scheduled_time"],
+
                 "frequency_type": item["frequency_type"],
+
                 "frequency_count": item["frequency_count"],
+
                 "frequency_unit": item["frequency_unit"],
+
                 "duration_value": item["duration_value"],
+
                 "duration_unit": item["duration_unit"],
+
                 "day_of_week": item["day_of_week"],
+
                 "meal_relation": item["meal_relation"],
+
                 "meal_offset_minutes": item["meal_offset_minutes"],
+
                 "start_date": item["start_date"],
+
                 "end_date": item["end_date"]
+
             }
+
         })
 
     return medicines
@@ -315,7 +375,9 @@ def get_due_medicines():
     now = datetime.now()
 
     current_date = now.date()
+
     current_time = now.strftime("%H:00:00")
+
     current_day = now.strftime("%A")
 
     result = (
@@ -357,6 +419,7 @@ def get_due_medicines():
     for item in result.data:
 
         start_date = item["start_date"]
+
         end_date = item["end_date"]
 
         # Check whether the medicine is active today
@@ -381,9 +444,13 @@ def get_due_medicines():
             and item["frequency_unit"] == "day"
         ):
 
-            start = datetime.fromisoformat(start_date).date()
+            start = datetime.fromisoformat(
+                start_date
+            ).date()
 
-            days_passed = (current_date - start).days
+            days_passed = (
+                current_date - start
+            ).days
 
             if days_passed % item["frequency_count"] != 0:
                 continue
@@ -391,28 +458,51 @@ def get_due_medicines():
         medicine = item["medications"]
 
         due_medicines.append({
+
             "medicine_id": medicine["id"],
+
             "name": medicine["name"],
+
             "dosage": medicine["dosage"],
+
             "purpose": medicine["purpose"],
+
             "prescribed_for": medicine["prescribed_for"],
+
             "instructions": medicine["instructions"],
+
             "schedule": {
+
                 "schedule_id": item["id"],
+
                 "dose_quantity": item["dose_quantity"],
+
                 "dose_unit": item["dose_unit"],
+
                 "scheduled_time": item["scheduled_time"],
+
                 "frequency_type": item["frequency_type"],
+
                 "frequency_count": item["frequency_count"],
+
                 "frequency_unit": item["frequency_unit"],
+
                 "duration_value": item["duration_value"],
+
                 "duration_unit": item["duration_unit"],
+
                 "day_of_week": item["day_of_week"],
+
                 "meal_relation": item["meal_relation"],
+
                 "meal_offset_minutes": item["meal_offset_minutes"],
+
                 "start_date": item["start_date"],
+
                 "end_date": item["end_date"]
+
             }
+
         })
 
     return due_medicines
@@ -424,96 +514,180 @@ def get_due_medicines():
 
 
 get_medicines_tool = {
+
     "type": "function",
+
     "function": {
+
         "name": "get_medicines",
-        "description": "Get the user's complete medication list with all schedules.",
+
+        "description":
+            "Get the user's complete medication list with all schedules.",
+
         "parameters": {
+
             "type": "object",
+
             "properties": {},
+
             "required": []
+
         }
+
     }
+
 }
 
 
 get_medicine_by_name_tool = {
+
     "type": "function",
+
     "function": {
+
         "name": "get_medicine_by_name",
-        "description": "Get complete information about a medicine, including dosage, purpose, instructions, and all schedules.",
+
+        "description":
+            "Get complete information about a medicine, including dosage, purpose, instructions, and all schedules.",
+
         "parameters": {
+
             "type": "object",
+
             "properties": {
+
                 "name": {
+
                     "type": "string",
-                    "description": "The name of the medicine."
+
+                    "description":
+                        "The name of the medicine."
+
                 }
+
             },
+
             "required": ["name"]
+
         }
+
     }
+
 }
 
 
 get_medicines_by_day_tool = {
+
     "type": "function",
+
     "function": {
+
         "name": "get_medicines_by_day",
-        "description": "Get medicines scheduled for a particular day of the week.",
+
+        "description":
+            "Get medicines scheduled for a particular day of the week.",
+
         "parameters": {
+
             "type": "object",
+
             "properties": {
+
                 "day": {
+
                     "type": "string",
-                    "description": "Day of the week."
+
+                    "description":
+                        "Day of the week."
+
                 }
+
             },
+
             "required": ["day"]
+
         }
+
     }
+
 }
 
 
 get_medicines_by_time_tool = {
+
     "type": "function",
+
     "function": {
+
         "name": "get_medicines_by_time",
-        "description": "Get medicines scheduled for a particular time.",
+
+        "description":
+            "Get medicines scheduled for a particular time.",
+
         "parameters": {
+
             "type": "object",
+
             "properties": {
+
                 "time": {
+
                     "type": "string",
-                    "description": "Time in HH:MM:SS format."
+
+                    "description":
+                        "Time in HH:MM:SS format."
+
                 }
+
             },
+
             "required": ["time"]
+
         }
+
     }
+
 }
 
 
 get_due_medicines_tool = {
+
     "type": "function",
+
     "function": {
+
         "name": "get_due_medicines",
-        "description": "Get medicines that are due right now using the current date and time.",
+
+        "description":
+            "Get medicines that are due right now using the current date and time.",
+
         "parameters": {
+
             "type": "object",
+
             "properties": {},
+
             "required": []
+
         }
+
     }
+
 }
 
 
 tools = [
+
     get_medicines_tool,
+
     get_medicine_by_name_tool,
+
     get_medicines_by_day_tool,
+
     get_medicines_by_time_tool,
+
     get_due_medicines_tool
+
 ]
 
 
@@ -523,11 +697,22 @@ tools = [
 
 
 available_tools = {
-    "get_medicines": get_medicines,
-    "get_medicine_by_name": get_medicine_by_name,
-    "get_medicines_by_day": get_medicines_by_day,
-    "get_medicines_by_time": get_medicines_by_time,
-    "get_due_medicines": get_due_medicines
+
+    "get_medicines":
+        get_medicines,
+
+    "get_medicine_by_name":
+        get_medicine_by_name,
+
+    "get_medicines_by_day":
+        get_medicines_by_day,
+
+    "get_medicines_by_time":
+        get_medicines_by_time,
+
+    "get_due_medicines":
+        get_due_medicines
+
 }
 
 
@@ -536,51 +721,99 @@ available_tools = {
 # --------------------------------------------------
 
 
-messages = [
-    {
-        "role": "system",
-        "content": system_prompt
-    },
-    {
-        "role": "user",
-        "content": "What are the medicines I should take in a day?"
-    }
-]
+def run_agent(user_input):
+
+    messages = [
+
+        {
+            "role": "system",
+
+            "content": system_prompt
+
+        },
+
+        {
+            "role": "user",
+
+            "content": user_input
+
+        }
+
+    ]
+
+    while True:
+
+        response = client.chat.completions.create(
+
+            model="gemini-3.1-flash-lite",
+
+            messages=messages,
+
+            tools=tools
+
+        )
+
+        message = response.choices[0].message
+
+        if not message.tool_calls:
+
+            return message.content
+
+        messages.append(message)
+
+        for tool_call in message.tool_calls:
+
+            function_name = tool_call.function.name
+
+            arguments = json.loads(
+                tool_call.function.arguments
+            )
+
+            function_to_call = available_tools[
+                function_name
+            ]
+
+            tool_result = function_to_call(
+                **arguments
+            )
+
+            messages.append({
+
+                "role": "tool",
+
+                "tool_call_id": tool_call.id,
+
+                "content": str(tool_result)
+
+            })
 
 
 # --------------------------------------------------
-# Tool-calling loop
+# Text + Voice modes
 # --------------------------------------------------
 
 
-while True:
+async def run_medi_mate(
+    input_mode="text",
+    user_input=None
+):
 
-    response = client.chat.completions.create(
-        model="gemini-3.1-flash-lite",
-        messages=messages,
-        tools=tools
-    )
+    if input_mode == "voice":
 
-    message = response.choices[0].message
+        user_input = await get_voice_input()
 
-    if not message.tool_calls:
-        print(message.content)
-        break
+        print("\nYou said:", user_input)
 
-    messages.append(message)
+    final_response = run_agent(user_input)
 
-    for tool_call in message.tool_calls:
+    print("\nMediMate:", final_response)
 
-        function_name = tool_call.function.name
+    if input_mode == "voice":
 
-        arguments = json.loads(tool_call.function.arguments)
+        audio_data = generate_speech(
+            final_response
+        )
 
-        function_to_call = available_tools[function_name]
+        return final_response, audio_data
 
-        tool_result = function_to_call(**arguments)
-
-        messages.append({
-            "role": "tool",
-            "tool_call_id": tool_call.id,
-            "content": str(tool_result)
-        })
+    return final_response

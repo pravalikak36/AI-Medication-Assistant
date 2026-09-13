@@ -1,5 +1,4 @@
 import os
-import wave
 
 from dotenv import load_dotenv
 from google import genai
@@ -12,7 +11,7 @@ tts_client = genai.Client(
 )
 
 
-def generate_speech(text, output_file="medimate_response.wav"):
+def generate_speech(text):
 
     response = tts_client.models.generate_content(
         model="gemini-3.1-flash-tts-preview",
@@ -31,10 +30,4 @@ def generate_speech(text, output_file="medimate_response.wav"):
 
     audio_data = response.candidates[0].content.parts[0].inline_data.data
 
-    with wave.open(output_file, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(24000)
-        wf.writeframes(audio_data)
-
-    return output_file  
+    return audio_data
